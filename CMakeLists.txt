@@ -4,18 +4,6 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
 
 CMAKE_POLICY(SET CMP0003 NEW)
 
-MACRO(add_test_ex target)
-    ADD_TEST(NAME ${target} COMMAND $<TARGET_FILE:${target}> --gtest_output=xml:${CMAKE_BINARY_DIR}/build/test-reports/${target}.xml)
-ENDMACRO()
-
-SET(TEXT_TRANSFORM "C:/Program Files (x86)/Common Files/Microsoft Shared/TextTemplating/12.0/TextTransform.exe")
-
-MACRO(add_custom_action_t4 targets)
-	foreach(target ${targets})
-    	add_custom_command(TARGET ${PROJECT} PRE_BUILD COMMAND ${TEXT_TRANSFORM} -I "${CMAKE_CURRENT_SOURCE_DIR}" -out "${CMAKE_CURRENT_SOURCE_DIR}/${target}" "${CMAKE_CURRENT_SOURCE_DIR}/${target}.tt")
-    endforeach()
-ENDMACRO()
-
 MACRO(add_custom_action_copy targets)
 	foreach(File ${targets})
 	  add_custom_command(TARGET ${PROJECT} PRE_BUILD
@@ -24,9 +12,15 @@ MACRO(add_custom_action_copy targets)
 	endforeach()
 ENDMACRO()
 
+MACRO(add_test_ex target)
+    ADD_TEST(NAME ${target} COMMAND $<TARGET_FILE:${target}> --gtest_output=xml:
+${CMAKE_BINARY_DIR}/build/test-reports/${target}.xml)
+ENDMACRO()
+
 # Project settings
 
-PROJECT(jpsutils CXX)
+SET(PROJECT Common)
+PROJECT(${PROJECT} CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -35,10 +29,6 @@ endif()
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/build/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/build/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/build/bin)
-
-if (CMAKE_COMPILER_IS_GNUCXX)
-    SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
-endif()
 
 # Add some multithreaded build support
 MARK_AS_ADVANCED(MULTITHREADED_BUILD)
@@ -59,7 +49,6 @@ endif()
 ## Qt
 
 # (Make sure that CMAKE_PREFIX_PATH env var is set)
-#set(CMAKE_AUTOMOC ON)
 FIND_PACKAGE(Qt5Core)
 FIND_PACKAGE(Qt5Sql)
 
@@ -71,26 +60,57 @@ FIND_PACKAGE(Boost COMPONENTS regex system thread REQUIRED)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 ADD_DEFINITIONS(-DBOOST_ALL_NO_LIB)
 
-## GTest
+## Gtest
 
 INCLUDE(CMakeGTest.txt)
 
-# Sub projects
+# Common
 
-add_subdirectory(Common)
-add_subdirectory(Common.Tests)
-add_subdirectory(Greis)
-add_subdirectory(Greis.Tests)
-add_subdirectory(Platform)
-add_subdirectory(Platform.Tests)
-add_subdirectory(DatabaseToJps)
-add_subdirectory(JpsToDatabase)
-add_subdirectory(jpslogd)
+FILE(GLOB_RECURSE HEADERS "${PROJECT}/*.h")
+
+FILE(GLOB_RECURSE SOURCES "src/*.cpp")
+
+FILE(GLOB_RECURSE MOC_SOURCES "*_automoc.cpp")
+
+# source grouping
+
+source_group ("Header Files" FILES ${HEADERS})
+source_group ("Source Files" FILES ${SOURCES})
+source_group ("Generated Files" FILES ${MOC_SOURCES})
+
+
+# includes
+
+foreach(DEPENDENCY ${DEPENDS_ON_PROJECTS})
+        include_directories("../${DEPENDENCY}")
+endforeach()
+
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT}")
+
+# linking
+
+add_library(${PROJECT} STATIC ${HEADERS} ${SOURCES} ${MOC_SOURCES})
+set_property(TARGET ${PROJECT} PROPERTY CXX_STANDARD 14)
+SET_TARGET_PROPERTIES(${PROJECT} PROPERTIES LINKER_LANGUAGE CXX)
+
+target_link_libraries(
+    ${PROJECT}
+    ${DEPENDS_ON_PROJECTS}
+    ${Boost_LIBRARIES}
+    Qt5::Core
+    debug ${GTEST_DEBUG_LIBS}
+    optimized ${GTEST_RELEASE_LIBS}
+    ${Pthread})
+
+install ( TARGETS ${PROJECT} EXPORT ${PROJECT} ARCHIVE DESTINATION ${CMAKE_BINARY_DIR}/build/lib)
+export ( TARGETS ${PROJECT} FILE ${CMAKE_BINARY_DIR}/${PROJECT}-config.cmake )
+export ( PACKAGE ${PROJECT} )
+
 
 # Tests
 
+add_subdirectory(Common.Tests)
 ENABLE_TESTING()
-
 ADD_TEST_EX(Common.Tests)
-ADD_TEST_EX(Greis.Tests)
-ADD_TEST_EX(Platform.Tests)
+
